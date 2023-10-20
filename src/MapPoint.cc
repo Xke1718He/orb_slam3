@@ -577,25 +577,28 @@ void MapPoint::PreSave(set<KeyFrame*>& spKF,set<MapPoint*>& spMP)
 
     mBackupObservationsId1.clear();
     mBackupObservationsId2.clear();
+
+    std::map<KeyFrame*, std::tuple<int, int>> tmp_mObservations;
+    tmp_mObservations.insert(mObservations.begin(), mObservations.end());
+
     // Save the id and position in each KF who view it
-    for(std::map<KeyFrame*,std::tuple<int,int> >::const_iterator it = mObservations.begin(), end = mObservations.end(); it != end; ++it)
-    {
-        KeyFrame* pKFi = it->first;
-        if(spKF.find(pKFi) != spKF.end())
-        {
-            mBackupObservationsId1[it->first->mnId] = get<0>(it->second);
-            mBackupObservationsId2[it->first->mnId] = get<1>(it->second);
-        }
-        else
-        {
-            EraseObservation(pKFi);
-        }
+    for (std::map<KeyFrame*, std::tuple<int, int>>::const_iterator
+            it = tmp_mObservations.begin(),
+            end = tmp_mObservations.end();
+        it != end; ++it) {
+      KeyFrame* pKFi = it->first;
+      if (spKF.find(pKFi) != spKF.end()) {
+        mBackupObservationsId1[it->first->mnId] = get<0>(it->second);
+        mBackupObservationsId2[it->first->mnId] = get<1>(it->second);
+      } else {
+        EraseObservation(pKFi);  // iterate -- afterwards to pull back once
+        //   it--;
+      }
     }
 
     // Save the id of the reference KF
-    if(spKF.find(mpRefKF) != spKF.end())
-    {
-        mBackupRefKFId = mpRefKF->mnId;
+    if (spKF.find(mpRefKF) != spKF.end()) {
+      mBackupRefKFId = mpRefKF->mnId;
     }
 }
 

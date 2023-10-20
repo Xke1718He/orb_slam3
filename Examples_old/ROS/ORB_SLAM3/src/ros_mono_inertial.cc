@@ -33,7 +33,7 @@
 
 #include"../../../include/System.h"
 #include"../include/ImuTypes.h"
-
+#include <termios.h>
 using namespace std;
 
 class ImuGrabber
@@ -63,6 +63,11 @@ public:
 
     const bool mbClahe;
     cv::Ptr<cv::CLAHE> mClahe = cv::createCLAHE(3.0, cv::Size(8, 8));
+    bool mbStop = false;
+    std::mutex mbStopMutex;
+    void SetStopFlag(bool flag);
+
+    void DetectStopAndSaveMap();
 };
 
 
@@ -95,10 +100,12 @@ int main(int argc, char **argv)
   ImageGrabber igb(&SLAM,&imugb,bEqual); // TODO
   
   // Maximum delay, 5 seconds
-  ros::Subscriber sub_imu = n.subscribe("/imu", 1000, &ImuGrabber::GrabImu, &imugb); 
-  ros::Subscriber sub_img0 = n.subscribe("/camera/image_raw", 100, &ImageGrabber::GrabImage,&igb);
+  ros::Subscriber sub_imu = n.subscribe("/camera/imu", 1000, &ImuGrabber::GrabImu, &imugb); 
+  ros::Subscriber sub_img0 = n.subscribe("/camera/infra1/image_rect_raw", 100, &ImageGrabber::GrabImage,&igb);
 
   std::thread sync_thread(&ImageGrabber::SyncWithImu,&igb);
+  std::thread stop_thread(&ImageGrabber::DetectStopAndSaveMap, &igb);
+  std::cout << "Finished !!!";
 
   ros::spin();
 
@@ -140,7 +147,7 @@ cv::Mat ImageGrabber::GetImage(const sensor_msgs::ImageConstPtr &img_msg)
 
 void ImageGrabber::SyncWithImu()
 {
-  while(1)
+  while(!mbStop)
   {
     cv::Mat im;
     double tIm = 0;
@@ -181,6 +188,7 @@ void ImageGrabber::SyncWithImu()
     std::chrono::milliseconds tSleep(1);
     std::this_thread::sleep_for(tSleep);
   }
+  cout << "SyncWithImu ends" << std::endl;
 }
 
 void ImuGrabber::GrabImu(const sensor_msgs::ImuConstPtr &imu_msg)
@@ -191,4 +199,37 @@ void ImuGrabber::GrabImu(const sensor_msgs::ImuConstPtr &imu_msg)
   return;
 }
 
+void ImageGrabber::DetectStopAndSaveMap()
+{
+  struct termios new_settings;
+  struct termios stored_settings;
+  while (true)
+  {
+    tcgetattr(0,&stored_settings);
+    new_settings = stored_settings;
+    new_settings.c_lflag &= (~ICANON);
+    new_settings.c_cc[VTIME] = 20;
+    new_settings.c_cc[VMIN] = 0;
+    tcsetattr(0,TCSANOW,&new_settings);
+
+    int tmp = getchar();
+
+    if(10 == tmp)
+    {
+      cout << "detect a key value:" << tmp << endl;
+
+      mpSLAM->Shutdown();
+      SetStopFlag(true);
+      break;
+    }
+
+    tcsetattr(0,TCSANOW,&stored_settings);
+  }
+}
+
+void ImageGrabber::SetStopFlag(bool flag)
+{
+  std::unique_lock<std::mutex> lock(mbStopMutex);
+  mbStop = flag;
+}
 
