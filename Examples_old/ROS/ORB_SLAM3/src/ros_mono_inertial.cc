@@ -147,6 +147,7 @@ cv::Mat ImageGrabber::GetImage(const sensor_msgs::ImageConstPtr &img_msg)
 
 void ImageGrabber::SyncWithImu()
 {
+  double t_track = 0.f;
   while(!mbStop)
   {
     cv::Mat im;
@@ -181,8 +182,24 @@ void ImageGrabber::SyncWithImu()
       mpImuGb->mBufMutex.unlock();
       if(mbClahe)
         mClahe->apply(im,im);
-
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+      std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #else
+      std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+  #endif
+#endif
       mpSLAM->TrackMonocular(im,tIm,vImuMeas);
+
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+      std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  #else
+      std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+  #endif
+      t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
+      mpSLAM->InsertTrackTime(t_track);
+#endif
     }
 
     std::chrono::milliseconds tSleep(1);

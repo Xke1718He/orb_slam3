@@ -186,75 +186,136 @@ void Tracking::LocalMapStats2File()
     ofstream f;
     f.open("LocalMapTimeStats.txt");
     f << fixed << setprecision(6);
-    f << "#Stereo rect[ms], MP culling[ms], MP creation[ms], LBA[ms], KF culling[ms], Total[ms]" << endl;
     for(int i=0; i<mpLocalMapper->vdLMTotal_ms.size(); ++i)
     {
-        f << mpLocalMapper->vdKFInsert_ms[i] << "," << mpLocalMapper->vdMPCulling_ms[i] << ","
-          << mpLocalMapper->vdMPCreation_ms[i] << "," << mpLocalMapper->vdLBASync_ms[i] << ","
-          << mpLocalMapper->vdKFCullingSync_ms[i] <<  "," << mpLocalMapper->vdLMTotal_ms[i] << endl;
+      double timeProcessKF = 0.0;
+      if(i < mpLocalMapper->vdLMTotal_ms.size())
+      {
+        timeProcessKF = mpLocalMapper->vdKFInsert_ms[i];
+      }
+
+      double timeMPCulling = 0.0f;
+      if (i < mpLocalMapper->vdMPCulling_ms.size())
+      {
+        timeMPCulling = mpLocalMapper->vdMPCulling_ms[i];
+      }
+
+      double timeMPCreation = 0.0f;
+      if (i < mpLocalMapper->vdMPCreation_ms.size())
+      {
+        timeMPCreation = mpLocalMapper->vdMPCreation_ms[i];
+      }
+
+      double timeLBA_ms = 0.0f;
+      if (i < mpLocalMapper->vdLBA_ms.size())
+      {
+        timeLBA_ms = mpLocalMapper->vdLBA_ms[i];
+      }
+
+      double timeKFCullingSync_ms = 0.0f;
+      if (i < mpLocalMapper->vdKFCullingSync_ms.size())
+      {
+        timeKFCullingSync_ms = mpLocalMapper->vdKFCullingSync_ms[i];
+      }
+
+      double timeLMTotal_ms = 0.0f;
+      if (i < mpLocalMapper->vdLMTotal_ms.size())
+      {
+        timeLMTotal_ms = mpLocalMapper->vdLMTotal_ms[i];
+      }
+      f << timeProcessKF << " " << timeMPCulling << " "
+        << timeMPCreation << " " << timeLBA_ms << " "
+        << timeKFCullingSync_ms <<  " " << timeLMTotal_ms << endl;
     }
 
     f.close();
 
-    f.open("LBA_Stats.txt");
-    f << fixed << setprecision(6);
-    f << "#LBA time[ms], KF opt[#], KF fixed[#], MP[#], Edges[#]" << endl;
-    for(int i=0; i<mpLocalMapper->vdLBASync_ms.size(); ++i)
-    {
-        f << mpLocalMapper->vdLBASync_ms[i] << "," << mpLocalMapper->vnLBA_KFopt[i] << ","
-          << mpLocalMapper->vnLBA_KFfixed[i] << "," << mpLocalMapper->vnLBA_MPs[i] << ","
-          << mpLocalMapper->vnLBA_edges[i] << endl;
-    }
+    // f.open("LBA_Stats.txt");
+    // f << fixed << setprecision(6);
+    // for(int i=0; i<mpLocalMapper->vdLBA_ms.size(); ++i)
+    // {
+    //     f << mpLocalMapper->vdLBA_ms[i] << " " << mpLocalMapper->vnLBA_KFopt[i] << " "
+    //       << mpLocalMapper->vnLBA_KFfixed[i] << " " << mpLocalMapper->vnLBA_MPs[i] << " "
+    //       << mpLocalMapper->vnLBA_edges[i] << endl;
+    // }
 
 
-    f.close();
+    // f.close();
 }
 
 void Tracking::TrackStats2File()
 {
     ofstream f;
-    f.open("SessionInfo.txt");
-    f << fixed;
-    f << "Number of KFs: " << mpAtlas->GetAllKeyFrames().size() << endl;
-    f << "Number of MPs: " << mpAtlas->GetAllMapPoints().size() << endl;
+    // f.open("SessionInfo.txt");
+    // f << fixed;
+    // f << "Number of KFs: " << mpAtlas->GetAllKeyFrames().size() << endl;
+    // f << "Number of MPs: " << mpAtlas->GetAllMapPoints().size() << endl;
 
-    f << "OpenCV version: " << CV_VERSION << endl;
+    // f << "OpenCV version: " << CV_VERSION << endl;
 
-    f.close();
+    // f.close();
 
     f.open("TrackingTimeStats.txt");
     f << fixed << setprecision(6);
 
-    f << "#Image Rect[ms], Image Resize[ms], ORB ext[ms], Stereo match[ms], IMU preint[ms], Pose pred[ms], LM track[ms], KF dec[ms], Total[ms]" << endl;
+    // f << "#Image Rect[ms], Image Resize[ms], ORB ext[ms], Stereo match[ms], IMU preint[ms], Pose pred[ms], LM track[ms], KF dec[ms], Total[ms]" << endl;
 
     for(int i=0; i<vdTrackTotal_ms.size(); ++i)
     {
         double stereo_rect = 0.0;
-        if(!vdRectStereo_ms.empty())
+        if(i < vdRectStereo_ms.size())
         {
             stereo_rect = vdRectStereo_ms[i];
         }
 
         double resize_image = 0.0;
-        if(!vdResizeImage_ms.empty())
+        if(i < vdResizeImage_ms.size())
         {
             resize_image = vdResizeImage_ms[i];
         }
 
         double stereo_match = 0.0;
-        if(!vdStereoMatch_ms.empty())
+        if(i < vdStereoMatch_ms.size())
         {
             stereo_match = vdStereoMatch_ms[i];
         }
 
         double imu_preint = 0.0;
-        if(!vdIMUInteg_ms.empty())
+        if(i < vdIMUInteg_ms.size())
         {
             imu_preint = vdIMUInteg_ms[i];
         }
+        double orb_extract = 0.0;
+        if  (i < vdORBExtract_ms.size())
+        {
+          orb_extract = vdORBExtract_ms[i];
+        }
 
-        f << stereo_rect << "," << resize_image << "," << vdORBExtract_ms[i] << "," << stereo_match << "," << imu_preint << ","
-          << vdPosePred_ms[i] <<  "," << vdLMTrack_ms[i] << "," << vdNewKF_ms[i] << "," << vdTrackTotal_ms[i] << endl;
+        double pose_pre = 0.0f;
+        if  (i < vdPosePred_ms.size())
+        {
+          pose_pre = vdPosePred_ms[i];
+        }
+
+        double lm_track = 0.0f;
+        if  (i < vdLMTrack_ms.size())
+        {
+          lm_track = vdLMTrack_ms[i];
+        }
+
+        double new_kf = 0.0f;
+        if  (i < vdNewKF_ms.size())
+        {
+          new_kf = vdNewKF_ms[i];
+        }
+
+        double total = 0.0f;
+        if  (i < vdTrackTotal_ms.size())
+        {
+          total = vdTrackTotal_ms[i];
+        }
+        f << stereo_rect << " " << resize_image << " " << orb_extract << " " << stereo_match << " " << imu_preint << " "
+          << pose_pre <<  " " << lm_track << " " << new_kf << " " << total << endl;
     }
 
     f.close();
@@ -3036,7 +3097,7 @@ bool Tracking::TrackLocalMap()
 
     if (mSensor == System::IMU_MONOCULAR)
     {
-        if((mnMatchesInliers<15 && mpAtlas->isImuInitialized())||(mnMatchesInliers<50 && !mpAtlas->isImuInitialized()))
+        if((mnMatchesInliers<15 && mpAtlas->isImuInitialized())||(mnMatchesInliers<20 && !mpAtlas->isImuInitialized()))
         {
             return false;
         }
