@@ -31,7 +31,7 @@
 
 #include<opencv2/core/core.hpp>
 
-#include"../../../include/System.h"
+#include"System.h"
 #include"../include/ImuTypes.h"
 #include <termios.h>
 using namespace std;
