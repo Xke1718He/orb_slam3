@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
 #FIND_PACKAGE( PCL REQUIRED COMPONENTS common io visualization filters )
 find_package( PCL REQUIRED)
 
+find_package(glog REQUIRED)
+set(GLOG_LIBRARY glog::glog)
 # PCL
 add_definitions( ${PCL_DEFINITIONS} )
 include_directories( ${PCL_INCLUDE_DIRS}  )
@@ -110,7 +112,7 @@ src/GeometricTools.cc
 src/TwoViewReconstruction.cc
 src/Config.cc
 src/Settings.cc
-#src/RosViewer.cc
+src/RosViewer.cc
 )
 
 # Mono
@@ -124,6 +126,7 @@ ${Pangolin_LIBRARIES}
 ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
 ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
 ${PCL_LIBRARIES}
+${GLOG_LIBRARY}
 -lboost_serialization
 -lcrypto
 )

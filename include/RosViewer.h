@@ -14,6 +14,8 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include "visualization_msgs/MarkerArray.h"
+#include "visualization_msgs/Marker.h"
 
 //#include <pcl/visualization/cloud_viewer.h> 
 #include <pcl/io/pcd_io.h>
@@ -32,41 +34,32 @@ class Tracking;
 class FrameDrawer;
 class MapDrawer;
 class System;
+class Atlas;
 
 class ROSViewer
 {
 public:
-    ROSViewer(System* pSystem, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Tracking *pTracking, const string &strSettingPath, Map *pMap);
+  ROSViewer(System* pSystem, Tracking* pTracker, Atlas* pAtlas, FrameDrawer *pFrameDrawer);
 
-    // Main thread function. Draw points, keyframes, the current camera pose and the last processed
-    // frame. Drawing is refreshed according to the camera fps. We use Pangolin.
     void Run();
-
     void RequestFinish();
-
     void RequestStop();
-
     bool isFinished();
-
     bool isStopped();
-
     void Release();
-
-    void SetCurrentCameraPose(const cv::Mat &Tcw);
+    void SetCurrentCameraPoseAndTime(const Sophus::SE3f &Tcw, double time);
+    void SetLoopFrame(KeyFrame* pCurrentFrame, KeyFrame* pLoopMatchedKF);
     
 private:
 
     bool Stop();
-
     System* mpSystem;
     FrameDrawer* mpFrameDrawer;
-    MapDrawer* mpMapDrawer;
     Tracking* mpTracker;
-    Map* mpMap;
+    Atlas* mpAtlas;
 
-    // 1/fps in ms
-    double mT;
-    float mImageWidth, mImageHeight;
+    bool mBoth;
+    double mTimeStamp = 0.0f;
 
     bool CheckFinish();
     void SetFinish();
@@ -74,50 +67,35 @@ private:
     bool mbFinished;
     std::mutex mMutexFinish;
 
+    std::vector<std::pair<KeyFrame*, KeyFrame*>> mLoopKeyFrames;
+    std::mutex mMutexLoop;
+
     bool mbStopped;
     bool mbStopRequested;
     std::mutex mMutexStop;
     
     std::mutex mMutexCamera;
-    cv::Mat mCameraPose;
-    
-    //ros::Publisher path_pub_;
-    ros::Publisher CamPose_pub_;
-    ros::Publisher VehiclePose_pub_;
-    ros::Publisher CamPath_pub_;
-    ros::Publisher VehiclePath_pub_;
-    ros::Publisher AllPointCloud_pub_;
-    ros::Publisher RefPointCloud_pub_;  
-    
-    image_transport::Publisher DrawFrame_pub_;
-    tf::TransformBroadcaster Vehicle2Ground_broadcaster_;
-    
-    //tf::TransformBroadcaster broadcaster;
-    ros::NodeHandle nh;
-    
-    bool mbGetNewCamPose;
-    
-    void TrackingDataPub();   
-    void GetCurrentROSCameraMatrix(geometry_msgs::PoseStamped &cam_pose);
-    void GetCurrentROSVehicleMatrix(geometry_msgs::PoseStamped &vehicle_pose);
-    void GetCurrentROSTrajectories(nav_msgs::Path &cam_path, nav_msgs::Path &vehicle_path);    
-    
-    void PointCloudPub();
-    void GetCurrentROSAllPointCloud( sensor_msgs::PointCloud2 &all_point_cloud, sensor_msgs::PointCloud2 &ref_point_cloud);
-    
-    void DrawFramePub();
-    
-    Eigen::Matrix3f mInitCam2Ground_R;
-    Eigen::Vector3f mInitCam2Ground_t;
-    Eigen::Matrix4f mTrans_cam2ground;   //calibration
-    
-    Eigen::Matrix3f mCam2Vehicle_R;  // camera is stationary to vehicle
-    Eigen::Vector3f mCam2Vehicle_t;
-    Eigen::Matrix4f mTrans_cam2vehicle;    //
+    Sophus::SE3f mCameraPose;
+    Sophus::SE3f mTbc;
 
-    Eigen::Matrix4f mCam2GroundNow_T;   
-    Eigen::Matrix4f mVehicle2GroundNow_T;   
+    ros::Publisher mCamPosePub;
+    ros::Publisher mCamPathPub;
+    ros::Publisher mAllPointCloudPub;
+    ros::Publisher mRefPointCloudPub;
+    ros::Publisher mKeyFramePub;
     
+    image_transport::Publisher mDrawFramePub;
+    tf::TransformBroadcaster mBroadcaster;
+    ros::NodeHandle nh;
+
+    void PubCameraPoseAndTF(std_msgs::Header& header);
+    void PubCameraPath(std_msgs::Header& header);
+    void PubPointCloud(std_msgs::Header& header);
+    void PubFrame();
+    void PubKeyFrame(std_msgs::Header& header);
+
+    void publish_ros_tf_transform(const Sophus::SE3f& Twc_SE3f, const string& frame_id, const string& child_frame_id, ros::Time msg_time);
+    static tf::Transform SE3f_to_tfTransform(Sophus::SE3f T_SE3f);
 };
 
 }

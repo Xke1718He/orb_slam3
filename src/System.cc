@@ -224,7 +224,11 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLoopCloser->SetLocalMapper(mpLocalMapper);
 
     //usleep(10*1000*1000);
+    mpRosViewer = new ROSViewer(this, mpTracker, mpAtlas, mpFrameDrawer);
+    mptRosViewer = new thread(&ROSViewer::Run, mpRosViewer);
 
+    mpTracker->SetROSViewer(mpRosViewer);
+    mpLoopCloser->SetRosViewer(mpRosViewer);
     //Initialize the Viewer thread and launch
     if(bUseViewer)
     //if(false) // TODO
@@ -523,6 +527,7 @@ void System::Shutdown()
 
     mpLocalMapper->RequestFinish();
     mpLoopCloser->RequestFinish();
+    mpRosViewer->RequestFinish();
     /*if(mpViewer)
     {
         mpViewer->RequestFinish();
