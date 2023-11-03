@@ -40,6 +40,7 @@ class Tracking;
 class LocalMapping;
 class KeyFrameDatabase;
 class Map;
+class ROSViewer;
 
 
 class LoopClosing
@@ -57,6 +58,8 @@ public:
     void SetTracker(Tracking* pTracker);
 
     void SetLocalMapper(LocalMapping* pLocalMapper);
+
+    void SetRosViewer(ROSViewer* pROSViewer);
 
     // Main function
     void Run();
@@ -158,6 +161,7 @@ protected:
 
     Atlas* mpAtlas;
     Tracking* mpTracker;
+    ROSViewer* mpROSViewer;
 
     KeyFrameDatabase* mpKeyFrameDB;
     ORBVocabulary* mpORBVocabulary;

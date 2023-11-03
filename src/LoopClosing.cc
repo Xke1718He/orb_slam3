@@ -119,6 +119,7 @@ void LoopClosing::Run()
 #endif
             if(bFindedRegion)
             {
+                mpROSViewer->SetLoopFrame(mpCurrentKF, mpLoopMatchedKF);
                 if(mbMergeDetected)
                 {
                     if ((mpTracker->mSensor==System::IMU_MONOCULAR || mpTracker->mSensor==System::IMU_STEREO || mpTracker->mSensor==System::IMU_RGBD) &&
@@ -2533,6 +2534,10 @@ bool LoopClosing::isFinished()
 {
     unique_lock<mutex> lock(mMutexFinish);
     return mbFinished;
+}
+void LoopClosing::SetRosViewer(ROSViewer *pROSViewer)
+{
+    mpROSViewer = pROSViewer;
 }
 
 

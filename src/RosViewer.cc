@@ -13,140 +13,67 @@
 namespace ORB_SLAM3
 {
 
-ROSViewer::ROSViewer(System* pSystem, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Tracking *pTracking, const string &strSettingPath, Map *pMap):
-    mpSystem(pSystem), mpFrameDrawer(pFrameDrawer),mpMapDrawer(pMapDrawer), mpTracker(pTracking), mpMap(pMap),
-    mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
+ROSViewer::ROSViewer(System* pSystem, Tracking* pTracker, Atlas* pAtlas, FrameDrawer *pFrameDrawer):
+   mpSystem(pSystem), mpFrameDrawer(pFrameDrawer), mpTracker(pTracker), mpAtlas(pAtlas),
+   mBoth(false), mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
 {
-    cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
+    const std::string prefix = "/ORB_SLAM3";
+    mCamPosePub = nh.advertise<geometry_msgs::PoseStamped >(prefix + "/camera_pose",1);
+    mCamPathPub = nh.advertise<nav_msgs::Path>(prefix + "/camera_path",1);
+    mAllPointCloudPub = nh.advertise<sensor_msgs::PointCloud2>(prefix + "/point_cloud_all",1);
+    mRefPointCloudPub = nh.advertise<sensor_msgs::PointCloud2>(prefix + "/point_cloud_ref",1);
+    mKeyFramePub = nh.advertise<visualization_msgs::MarkerArray>(prefix + "/keyframes", 1);
 
-    float fps = fSettings["Camera.fps"];
-    if(fps<1)
-        fps=30;
-    mT = 1e3/fps;
-
-    mImageWidth = fSettings["Camera.width"];
-    mImageHeight = fSettings["Camera.height"];
-    if(mImageWidth<1 || mImageHeight<1)
-    {
-        mImageWidth = 640;
-        mImageHeight = 480;
-    }
     
-    // camera under ground      
-    mInitCam2Ground_R << 1,0,0,0,0,1,0,-1,0;  // camera coordinate represented in ground coordinate system
-    mInitCam2Ground_t.setZero();     
-    mTrans_cam2ground.setIdentity();   // Set to Identity to make bottom row of Matrix 0,0,0,1
-    mTrans_cam2ground.block<3,3>(0,0) = mInitCam2Ground_R;
-    mTrans_cam2ground.block<3,1>(0,3) = mInitCam2Ground_t;  //< block_rows, block_cols >(pos_row, pos_col)
+    image_transport::ImageTransport it_(nh);
+    mDrawFramePub = it_.advertise(prefix + "/frame", 1);
 
-    // camera under vehicle, 
-    mCam2Vehicle_R << 0,0,1,-1,0,0,0,-1,0;  // camera coordinate represented in vehicle coordinate system
-    mCam2Vehicle_t.setZero();
-    mTrans_cam2vehicle.setIdentity();   // Set to Identity to make bottom row of Matrix 0,0,0,1
-    mTrans_cam2vehicle.block<3,3>(0,0) = mCam2Vehicle_R;
-    mTrans_cam2vehicle.block<3,1>(0,3) = mCam2Vehicle_t;  //< block_rows, block_cols >(pos_row, pos_col)
+    mTbc = mpTracker->GetTbc();
 }
 
-void ROSViewer::TrackingDataPub()
+void ROSViewer::PubFrame()
 {
-    geometry_msgs::PoseStamped camPose2Ground;  
-    geometry_msgs::PoseStamped vehiclePose2Ground;  
-    nav_msgs::Path cameraPath, vehiclePath;
-    while(1)
-    { 
-      if(mbGetNewCamPose)
-      {
-        GetCurrentROSCameraMatrix(camPose2Ground);
-        GetCurrentROSVehicleMatrix(vehiclePose2Ground);
-        GetCurrentROSTrajectories(cameraPath, vehiclePath);
-        CamPose_pub_.publish(camPose2Ground);
-        VehiclePose_pub_.publish(vehiclePose2Ground);
-        CamPath_pub_.publish(cameraPath);   // KeyFrames
-        VehiclePath_pub_.publish(vehiclePath);
+    cv::Mat toShow;
+    cv::Mat im = mpFrameDrawer->DrawFrame(1.f);
 
-        float tf_q_x = vehiclePose2Ground.pose.orientation.x;
-        float tf_q_y = vehiclePose2Ground.pose.orientation.y;
-        float tf_q_z = vehiclePose2Ground.pose.orientation.z;
-        float tf_q_w = vehiclePose2Ground.pose.orientation.w;
-        float tf_x = vehiclePose2Ground.pose.position.x;
-        float tf_y = vehiclePose2Ground.pose.position.y;
-        float tf_z = vehiclePose2Ground.pose.position.z;
-
-        Vehicle2Ground_broadcaster_.sendTransform(
-          tf::StampedTransform(
-          tf::Transform(tf::Quaternion(tf_q_x,tf_q_y,tf_q_z,tf_q_w), tf::Vector3(tf_x, tf_y, tf_z)),
-          ros::Time::now(),"ground", "vehicle"));
-      }
-      if(CheckFinish())
-          break;
-       usleep(1*1000);
+    if(mBoth){
+       cv::Mat imRight = mpFrameDrawer->DrawRightFrame(1.0f);
+       cv::hconcat(im,imRight,toShow);
     }
-   
-}
-
-void ROSViewer::PointCloudPub()
-{
-    sensor_msgs::PointCloud2 allMapPoints;
-    sensor_msgs::PointCloud2 referenceMapPoints;
-    while(1)
-    {
-// 	  if(mbGetNewCamPose)
-// 	  {
-        GetCurrentROSAllPointCloud(allMapPoints, referenceMapPoints);
-        AllPointCloud_pub_.publish(allMapPoints);
-        RefPointCloud_pub_.publish(referenceMapPoints);
-// 	  }
-      if(CheckFinish())
-          break;
-      usleep(mT*1000/2);
+    else{
+       toShow = im;
     }
-}
-
-void ROSViewer::DrawFramePub()
-{
-    cv_bridge::CvImage cvi;
-    cvi.header.frame_id = "image";
-    cvi.encoding = "bgr8";
-    cvi.header.stamp = ros::Time::now();
-    while(1)
-    {
-    // 	if(mbGetNewCamPose)
-    // 	{
-      cv::Mat img = mpFrameDrawer->DrawFrame();
-      cv::imshow("Current Frame",img);
-      cv::waitKey(mT/2);
-      cvi.image = img;
-      sensor_msgs::Image im;
-      cvi.toImageMsg(im);
-      DrawFrame_pub_.publish(im);
-    //	}
-      if(CheckFinish())
-          break;
-      //usleep(1*1000);
-    }
+    std_msgs::Header header;
+    header.frame_id = "world";
+    header.stamp = ros::Time::now();
+    sensor_msgs::ImagePtr imgTrackMsg = cv_bridge::CvImage(header, "bgr8", toShow).toImageMsg();
+    mDrawFramePub.publish(imgTrackMsg);
 }
 
 void ROSViewer::Run()
 {
     mbFinished = false;
     mbStopped = false;
+    while(true)
+    {
+      std_msgs::Header header;
+      header.frame_id = "world";
+      double time;
+      {
+          std::unique_lock<std::mutex> lock(mMutexCamera);
+          time = mTimeStamp;
+      }
+      header.stamp = ros::Time(time);
 
-    CamPose_pub_ = nh.advertise<geometry_msgs::PoseStamped >("camera_pose",1);
-    VehiclePose_pub_ = nh.advertise<geometry_msgs::PoseStamped >("vehicle_pose",1);
-    CamPath_pub_ = nh.advertise<nav_msgs::Path>("camera_path",1);
-    VehiclePath_pub_ = nh.advertise<nav_msgs::Path>("vehicle_path",1);
-    AllPointCloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("point_cloud_all",1);
-    RefPointCloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("point_cloud_ref",1);
-    
-    image_transport::ImageTransport it_(nh);
-    DrawFrame_pub_ = it_.advertise("/frame_now", 1);
-       
-    thread threadCamPosePub(&ROSViewer::TrackingDataPub,this);
-    thread threadPointCloudPub(&ROSViewer::PointCloudPub,this);
-    thread threadDrawFramePub(&ROSViewer::DrawFramePub,this);
-    
-    threadCamPosePub.join(); 
-    threadPointCloudPub.join();
+      PubFrame();
+      PubCameraPoseAndTF(header);
+      PubCameraPath(header);
+      PubPointCloud(header);
+
+      if(CheckFinish())
+          break;
+      usleep(1000);
+    }
 
     SetFinish();
 }
@@ -211,196 +138,226 @@ void ROSViewer::Release()
     mbStopped = false;
 }
 
-void ROSViewer::SetCurrentCameraPose(const cv::Mat &Tcw)
+void ROSViewer::SetCurrentCameraPoseAndTime(const Sophus::SE3f &Tcw, double time)
 {
     unique_lock<mutex> lock(mMutexCamera);
-    mCameraPose = Tcw.clone();
-    mbGetNewCamPose = true;
+    mCameraPose = Tcw;
+    mTimeStamp = time;
 }
 
-void ROSViewer::GetCurrentROSCameraMatrix(geometry_msgs::PoseStamped &cam_pose)
+void ROSViewer::PubCameraPoseAndTF(std_msgs::Header& header)
 {
-  if(!mCameraPose.empty())
-  {
-    Eigen::Matrix4f cam_pose2firstcam;
-    Eigen::Matrix4f cam_pose2ground;
+    Sophus::SE3f Twc;
+    Sophus::SE3f Twb;
     {
         unique_lock<mutex> lock(mMutexCamera);
-        cv2eigen(mCameraPose.inv(),cam_pose2firstcam);
-        cam_pose2ground = mTrans_cam2ground * cam_pose2firstcam;
-        {
-          mCam2GroundNow_T = cam_pose2ground;
-        }
+        Twb = mCameraPose.inverse();
+        Twc = Twb * mTbc;
     }
+    geometry_msgs::PoseStamped camPose;
+    camPose.header = header;
 
-    cam_pose.pose.position.x = cam_pose2ground(0,3);
-    cam_pose.pose.position.y  = cam_pose2ground(1,3);
-    cam_pose.pose.position.z  = cam_pose2ground(2,3);
+    camPose.pose.position.x = Twc.translation().x();
+    camPose.pose.position.y = Twc.translation().y();
+    camPose.pose.position.z = Twc.translation().z();
 
-    Eigen::Matrix3f Rwc = cam_pose2ground.block<3,3>(0,0);
-    Eigen::Quaternionf q(Rwc);
-    cam_pose.pose.orientation.x = q.x();
-    cam_pose.pose.orientation.y = q.y();
-    cam_pose.pose.orientation.z = q.z();
-    cam_pose.pose.orientation.w = q.w();
+    camPose.pose.orientation.w = Twc.unit_quaternion().coeffs().w();
+    camPose.pose.orientation.x = Twc.unit_quaternion().coeffs().x();
+    camPose.pose.orientation.y = Twc.unit_quaternion().coeffs().y();
+    camPose.pose.orientation.z = Twc.unit_quaternion().coeffs().z();
+    mCamPosePub.publish(camPose);
 
-    cam_pose.header.frame_id = "ground";
-    cam_pose.header.stamp = ros::Time::now();
-
-    mbGetNewCamPose = false;
-  }
+    publish_ros_tf_transform(Twb, "world", "body", header.stamp);
+    publish_ros_tf_transform(mTbc, "body", "camera", header.stamp);
 }
 
-void ROSViewer::GetCurrentROSVehicleMatrix(geometry_msgs::PoseStamped &vehicle_pose)
+void ROSViewer::PubCameraPath(std_msgs::Header& header)
 {
-  if(!mCameraPose.empty())
-  {
-    Eigen::Matrix4f vehicle_pose2ground;
-    {
-      vehicle_pose2ground = mCam2GroundNow_T * mTrans_cam2vehicle.inverse();
-    }
-    {
-      mVehicle2GroundNow_T = vehicle_pose2ground;
-    }
-    vehicle_pose.pose.position.x = vehicle_pose2ground(0,3);
-    vehicle_pose.pose.position.y  = vehicle_pose2ground(1,3);
-    vehicle_pose.pose.position.z  = vehicle_pose2ground(2,3);
+    visualization_msgs::MarkerArray markerArray;
+    visualization_msgs::Marker keyPoses;
+    visualization_msgs::Marker markerEdge;
+    keyPoses.header = header;
+    keyPoses.ns = "keyPoses";
+    keyPoses.type = visualization_msgs::Marker::POINTS;
+    keyPoses.action = visualization_msgs::Marker::ADD;
+    keyPoses.pose.orientation.w = 1.0;
+    keyPoses.lifetime = ros::Duration();
 
-    Eigen::Matrix3f Rwc = vehicle_pose2ground.block<3,3>(0,0);
-    Eigen::Quaternionf q(Rwc);
-    vehicle_pose.pose.orientation.x = q.x();
-    vehicle_pose.pose.orientation.y = q.y();
-    vehicle_pose.pose.orientation.z = q.z();
-    vehicle_pose.pose.orientation.w = q.w();
+    keyPoses.id = 0;
+    keyPoses.scale.x = 0.05;
+    keyPoses.scale.y = 0.05;
+    keyPoses.scale.z = 0.05;
+    keyPoses.color.b = 1.0;
+    keyPoses.color.a = 1.0;
 
-    vehicle_pose.header.frame_id = "ground";
-    vehicle_pose.header.stamp = ros::Time::now();
-  }
+    nav_msgs::Path camPath;
+    vector<KeyFrame*> vpKFs = mpAtlas->GetAllKeyFrames();
+
+    if (vpKFs.empty())
+    {
+        return;
+    }
+    sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    for (auto pKF : vpKFs)
+    {
+        const auto pose = pKF->GetPoseInverse();
+        const auto time = pKF->mTimeStamp;
+        geometry_msgs::PoseStamped camPose;
+        camPose.header.frame_id = "world";
+        camPose.header.stamp = ros::Time(time);
+
+        camPose.pose.position.x = pose.translation().x();
+        camPose.pose.position.y = pose.translation().y();
+        camPose.pose.position.z = pose.translation().z();
+
+        camPose.pose.orientation.w = pose.unit_quaternion().coeffs().w();
+        camPose.pose.orientation.x = pose.unit_quaternion().coeffs().x();
+        camPose.pose.orientation.y = pose.unit_quaternion().coeffs().y();
+        camPose.pose.orientation.z = pose.unit_quaternion().coeffs().z();
+        camPath.poses.push_back(camPose);
+
+        geometry_msgs::Point poseMarker;
+        poseMarker.x = pose.translation().x();
+        poseMarker.y = pose.translation().y();
+        poseMarker.z = pose.translation().z();
+        keyPoses.points.push_back(poseMarker);
+    }
+
+    markerEdge.header = header;
+    markerEdge.action = visualization_msgs::Marker::ADD;
+    markerEdge.type = visualization_msgs::Marker::LINE_LIST;
+    markerEdge.ns = "loop_edges";
+    markerEdge.id = 1;
+    markerEdge.pose.orientation.w = 1;
+    markerEdge.scale.x = 0.05;
+    markerEdge.color.r = 0.9;
+    markerEdge.color.g = 0.9;
+    markerEdge.color.b = 0;
+    markerEdge.color.a = 1;
+
+    std::vector<std::pair<KeyFrame*, KeyFrame*>> loopKeyFrames;
+    {
+        std::unique_lock<std::mutex> lock(mMutexLoop);
+        loopKeyFrames.insert(loopKeyFrames.end(), mLoopKeyFrames.begin(), mLoopKeyFrames.end());
+    }
+
+    //show loop info
+    for (auto& loopKeyFrame : loopKeyFrames)
+    {
+       Sophus::SE3f curPose = loopKeyFrame.first->GetPoseInverse();
+       Sophus::SE3f matchPose = loopKeyFrame.second->GetPoseInverse();
+
+       geometry_msgs::Point p;
+       p.x = curPose.translation().x();
+       p.y = curPose.translation().y();
+       p.z = curPose.translation().z();
+       markerEdge.points.push_back(p);
+       p.x = matchPose.translation().x();
+       p.y = matchPose.translation().y();
+       p.z = matchPose.translation().z();
+       markerEdge.points.push_back(p);
+    }
+
+    markerArray.markers.push_back(markerEdge);
+    markerArray.markers.push_back(keyPoses);
+
+    if (camPath.poses.empty())
+    {
+        return;
+    }
+    camPath.header = header;
+    mCamPathPub.publish(camPath);
+    mKeyFramePub.publish(markerArray);
 }
 
-void ROSViewer::GetCurrentROSTrajectories(nav_msgs::Path &cam_path, nav_msgs::Path &vehicle_path)
+void ROSViewer::PubPointCloud(std_msgs::Header& header)
 {
-    if(!mCameraPose.empty())
+    sensor_msgs::PointCloud2 all_point_cloud, ref_point_cloud;
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr allPoints( new pcl::PointCloud<pcl::PointXYZRGBA> );
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr refPoints( new pcl::PointCloud<pcl::PointXYZRGBA> );
+
+    const vector<MapPoint*> &vpMPs = mpAtlas->GetAllMapPoints();
+    const vector<MapPoint*> &vpRefMPs = mpAtlas->GetReferenceMapPoints();
+
+    set<MapPoint*> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
+
+    if(vpMPs.empty() && vpRefMPs.empty())
+        return;
+
+    for (auto vpMP : vpMPs)
     {
-      nav_msgs::Path cam_path_temp;
-      nav_msgs::Path vehicle_path_temp;
-
-      geometry_msgs::PoseStamped cam_pose;
-       geometry_msgs::PoseStamped vehicle_pose;
-
-      vector<cv::Mat> currentTrajectory;
-      mpSystem->GetCurrentTrajectory(currentTrajectory);
-
-      Eigen::Matrix4f cam_pose_temp;
-
-      for(auto mt:currentTrajectory) // no need to inverse
-      {
-        cv2eigen(mt,cam_pose_temp);
-
-        Eigen::Matrix4f cam_pose2ground = mTrans_cam2ground * cam_pose_temp;
-        Eigen::Matrix4f vehicle_pose2ground = cam_pose2ground * mTrans_cam2vehicle.inverse();
-
-        cam_pose.pose.position.x = cam_pose2ground(0,3);
-        cam_pose.pose.position.y = cam_pose2ground(1,3);
-        cam_pose.pose.position.z = cam_pose2ground(2,3);
-        Eigen::Matrix3f Rwc = cam_pose2ground.block<3,3>(0,0);
-        Eigen::Quaternionf q(Rwc);
-        cam_pose.pose.orientation.x = q.x();
-        cam_pose.pose.orientation.y = q.y();
-        cam_pose.pose.orientation.z = q.z();
-        cam_pose.pose.orientation.w = q.w();
-
-        vehicle_pose.pose.position.x = vehicle_pose2ground(0,3);
-        vehicle_pose.pose.position.y = vehicle_pose2ground(1,3);
-        vehicle_pose.pose.position.z = vehicle_pose2ground(2,3);
-        Eigen::Matrix3f Rwc2 = vehicle_pose2ground.block<3,3>(0,0);
-        Eigen::Quaternionf q2(Rwc2);
-        vehicle_pose.pose.orientation.x = q2.x();
-        vehicle_pose.pose.orientation.y = q2.y();
-        vehicle_pose.pose.orientation.z = q2.z();
-        vehicle_pose.pose.orientation.w = q2.w();
-
-        vehicle_path_temp.poses.push_back(vehicle_pose);
-        cam_path_temp.poses.push_back(cam_pose);
-      }
-      cam_path_temp.header.frame_id = "ground";
-      cam_path_temp.header.stamp = ros::Time::now();
-      vehicle_path_temp.header.frame_id = "ground";
-      vehicle_path_temp.header.stamp = ros::Time::now();
-
-      cam_path = cam_path_temp;
-      vehicle_path = vehicle_path_temp;
+      if(vpMP->isBad() || spRefMPs.count(vpMP))
+          continue;
+      Eigen::Vector3f pos = vpMP->GetWorldPos();
+      pcl::PointXYZRGBA p1;
+      p1.x = pos(0);
+      p1.y = pos(1);
+      p1.z = pos(2);
+      p1.b = 255;
+      p1.g = 255;
+      p1.r = 255;
+      p1.a = 255;
+      allPoints->points.push_back(p1);
     }
+    pcl::PCLPointCloud2 pointCloud2;
+    pcl::toPCLPointCloud2(*allPoints, pointCloud2);    // pcl::PointXYZRGBA -> pcl::PCLPointCloud2
+    pcl_conversions::fromPCL(pointCloud2, all_point_cloud);  // pcl::PCLPointCloud2 -> sensor_msgs::PointCloud2
+    all_point_cloud.header = header;
+
+    for (auto spRefMP : spRefMPs)
+    {
+      if(spRefMP->isBad())
+          continue;
+      auto pos = spRefMP->GetWorldPos();
+      pcl::PointXYZRGBA p2;
+      p2.x = pos(0);
+      p2.y = pos(1);
+      p2.z = pos(2);
+      p2.b = 0;
+      p2.g = 0;
+      p2.r = 255;
+      p2.a = 255;
+      refPoints->points.push_back( p2 );
+    }
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl::toPCLPointCloud2(*refPoints, pcl_pc2); // pcl::PointXYZRGBA -> pcl::PCLPointCloud2
+    pcl_conversions::fromPCL(pcl_pc2, ref_point_cloud);  // pcl::PCLPointCloud2 -> sensor_msgs::PointCloud2
+    ref_point_cloud.header = header;
+    mAllPointCloudPub.publish(all_point_cloud);
+    mRefPointCloudPub.publish(ref_point_cloud);
 }
 
-void ROSViewer::GetCurrentROSAllPointCloud( sensor_msgs::PointCloud2 &all_point_cloud, sensor_msgs::PointCloud2 &ref_point_cloud)
+void ROSViewer::publish_ros_tf_transform(const Sophus::SE3f& Twc, const string& frame_id, const string& child_frame_id, ros::Time msg_time)
 {
-  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_all( new pcl::PointCloud<pcl::PointXYZRGBA> );
-  pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_ref( new pcl::PointCloud<pcl::PointXYZRGBA> );
-
-  const vector<MapPoint*> &vpMPs = mpMap->GetAllMapPoints();
-  const vector<MapPoint*> &vpRefMPs = mpMap->GetReferenceMapPoints();
-
-  set<MapPoint*> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
-
-  if(vpMPs.empty())
-      return;
-
-  for(size_t i=0, iend=vpMPs.size(); i<iend;i++)
-  {
-    if(vpMPs[i]->isBad() || spRefMPs.count(vpMPs[i]))
-        continue;
-    cv::Mat pos = vpMPs[i]->GetWorldPos();
-    pcl::PointXYZRGBA p1;
-    Eigen::Vector4f p1_temp, p1_temp_t;
-    p1_temp(0) = pos.at<float>(0);
-    p1_temp(1) = pos.at<float>(1);
-    p1_temp(2) = pos.at<float>(2);
-    p1_temp(3) = 1;
-    p1_temp_t = mTrans_cam2ground * p1_temp;
-    p1.x = p1_temp_t(0);
-    p1.y = p1_temp_t(1);
-    p1.z = p1_temp_t(2);
-    p1.b = 255;
-    p1.g = 255;
-    p1.r = 255;
-    p1.a = 255;
-    cloud_all->points.push_back( p1 );
-  }
-  pcl::PCLPointCloud2 pcl_pc1;
-  pcl::toPCLPointCloud2(*cloud_all, pcl_pc1);    // pcl::PointXYZRGBA -> pcl::PCLPointCloud2
-  pcl_conversions::fromPCL(pcl_pc1, all_point_cloud);  // pcl::PCLPointCloud2 -> sensor_msgs::PointCloud2
-  all_point_cloud.header.frame_id = "ground";
-  all_point_cloud.header.stamp = ros::Time::now();
-
-  for(set<MapPoint*>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
-  {
-    if((*sit)->isBad())
-        continue;
-    cv::Mat pos = (*sit)->GetWorldPos();
-    pcl::PointXYZRGBA p2;
-    Eigen::Vector4f p2_temp, p2_temp_t;
-    p2_temp(0) = pos.at<float>(0);
-    p2_temp(1) = pos.at<float>(1);
-    p2_temp(2) = pos.at<float>(2);
-    p2_temp(3) = 1;
-    p2_temp_t = mTrans_cam2ground * p2_temp;
-    p2.x = p2_temp_t(0);
-    p2.y = p2_temp_t(1);
-    p2.z = p2_temp_t(2);
-    p2.b = 0;
-    p2.g = 0;
-    p2.r = 255;
-    p2.a = 255;
-    cloud_ref->points.push_back( p2 );
-  }
-  pcl::PCLPointCloud2 pcl_pc2;
-  pcl::toPCLPointCloud2(*cloud_ref, pcl_pc2); // pcl::PointXYZRGBA -> pcl::PCLPointCloud2
-  pcl_conversions::fromPCL(pcl_pc2, ref_point_cloud);  // pcl::PCLPointCloud2 -> sensor_msgs::PointCloud2
-  ref_point_cloud.header.frame_id = "ground";
-  ref_point_cloud.header.stamp = ros::Time::now();
+    tf::Transform tf_transform = SE3f_to_tfTransform(Twc);
+    mBroadcaster.sendTransform(tf::StampedTransform(tf_transform, msg_time, frame_id, child_frame_id));
 }
 
+tf::Transform ROSViewer::SE3f_to_tfTransform(Sophus::SE3f T_SE3f)
+{
+    Eigen::Matrix3f R_mat = T_SE3f.rotationMatrix();
+    Eigen::Vector3f t_vec = T_SE3f.translation();
+
+    tf::Matrix3x3 R_tf(
+        R_mat(0, 0), R_mat(0, 1), R_mat(0, 2),
+        R_mat(1, 0), R_mat(1, 1), R_mat(1, 2),
+        R_mat(2, 0), R_mat(2, 1), R_mat(2, 2)
+    );
+
+    tf::Vector3 t_tf(
+        t_vec(0),
+        t_vec(1),
+        t_vec(2)
+    );
+
+    return tf::Transform(R_tf, t_tf);
+}
+void ROSViewer::SetLoopFrame(KeyFrame *pCurrentFrame, KeyFrame *pLoopMatchedKF)
+{
+    std::unique_lock<std::mutex> lock(mMutexLoop);
+    mLoopKeyFrames.emplace_back(pCurrentFrame, pLoopMatchedKF);
+}
 }
 
 

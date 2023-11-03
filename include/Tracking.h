@@ -42,6 +42,8 @@
 #include <mutex>
 #include <unordered_set>
 
+#include "RosViewer.h"
+
 namespace ORB_SLAM3
 {
 
@@ -52,6 +54,7 @@ class LocalMapping;
 class LoopClosing;
 class System;
 class Settings;
+class ROSViewer;
 
 class Tracking
 {  
@@ -78,6 +81,7 @@ public:
     void SetLocalMapper(LocalMapping* pLocalMapper);
     void SetLoopClosing(LoopClosing* pLoopClosing);
     void SetViewer(Viewer* pViewer);
+    void SetROSViewer(ROSViewer* pViewer);
     void SetStepByStep(bool bSet);
     bool GetStepByStep();
 
@@ -107,6 +111,7 @@ public:
     void SaveSubTrajectory(string strNameFile_frames, string strNameFile_kf, Map* pMap);
 
     float GetImageScale();
+    Sophus::SE3f GetTbc();
 
 #ifdef REGISTER_LOOP
     void RequestStop();
@@ -279,6 +284,7 @@ protected:
     
     //Drawers
     Viewer* mpViewer;
+    ROSViewer* mpROSViewer;
     FrameDrawer* mpFrameDrawer;
     MapDrawer* mpMapDrawer;
     bool bStepByStep;

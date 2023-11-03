@@ -424,6 +424,12 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
         VP->setId(pKFi->mnId);
         pIncKF=pKFi;
         bool bFixed = false;
+
+        if (i == 0)
+        {
+          VP->setFixed(true);
+        }
+
         if(bFixLocal)
         {
             bFixed = (pKFi->mnBALocalForKF>=(maxKFid-1)) || (pKFi->mnBAFixedForKF>=(maxKFid-1));
@@ -437,7 +443,16 @@ void Optimizer::FullInertialBA(Map *pMap, int its, const bool bFixLocal, const l
         {
             VertexVelocity* VV = new VertexVelocity(pKFi);
             VV->setId(maxKFid+3*(pKFi->mnId)+1);
-            VV->setFixed(bFixed);
+
+            if (i == 0)
+            {
+              VV->setFixed(true);
+            }
+            else
+            {
+              VV->setFixed(bFixed);
+            }
+
             optimizer.addVertex(VV);
             if (!bInit)
             {

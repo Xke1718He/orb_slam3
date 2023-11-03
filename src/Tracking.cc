@@ -44,7 +44,7 @@ namespace ORB_SLAM3
 Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Atlas *pAtlas, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, Settings* settings, const string &_nameSeq):
     mState(NO_IMAGES_YET), mSensor(sensor), mTrackedFr(0), mbStep(false),
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
-    mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
+    mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), mpROSViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
 {
@@ -2261,7 +2261,11 @@ void Tracking::Track()
         // Update drawer
         mpFrameDrawer->Update(this);
         if(mCurrentFrame.isSet())
+        {
             mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.GetPose());
+            mpROSViewer->SetCurrentCameraPoseAndTime(mCurrentFrame.GetPose(), mCurrentFrame.mTimeStamp);
+        }
+
 
         if(bOK || mState==RECENTLY_LOST)
         {
@@ -2277,7 +2281,10 @@ void Tracking::Track()
             }
 
             if(mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
+            {
                 mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.GetPose());
+                mpROSViewer->SetCurrentCameraPoseAndTime(mCurrentFrame.GetPose(), mCurrentFrame.mTimeStamp);
+            }
 
             // Clean VO matches
             for(int i=0; i<mCurrentFrame.N; i++)
@@ -2500,7 +2507,7 @@ void Tracking::StereoInitialization()
         mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.push_back(pKFini);
 
         mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.GetPose());
-
+        mpROSViewer->SetCurrentCameraPoseAndTime(mCurrentFrame.GetPose(), mCurrentFrame.mTimeStamp);
         mState=OK;
     }
 }
@@ -2713,6 +2720,7 @@ void Tracking::CreateInitialMapMonocular()
     mpMapDrawer->SetCurrentCameraPose(pKFcur->GetPose());
 
     mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.push_back(pKFini);
+    mpROSViewer->SetCurrentCameraPoseAndTime(pKFcur->GetPose(), pKFcur->mTimeStamp);
 
     mState=OK;
 
@@ -4142,6 +4150,14 @@ void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_k
 float Tracking::GetImageScale()
 {
     return mImageScale;
+}
+void Tracking::SetROSViewer(ROSViewer *pViewer)
+{
+    mpROSViewer = pViewer;
+}
+Sophus::SE3f Tracking::GetTbc()
+{
+    return mpImuCalib->mTbc;
 }
 
 #ifdef REGISTER_LOOP

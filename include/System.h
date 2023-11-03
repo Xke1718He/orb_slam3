@@ -39,6 +39,7 @@
 #include "Viewer.h"
 #include "ImuTypes.h"
 #include "Settings.h"
+#include "RosViewer.h"
 
 
 namespace ORB_SLAM3
@@ -79,6 +80,7 @@ class Tracking;
 class LocalMapping;
 class LoopClosing;
 class Settings;
+class ROSViewer;
 
 class System
 {
@@ -226,6 +228,7 @@ private:
 
     // The viewer draws the map and the current camera pose. It uses Pangolin.
     Viewer* mpViewer;
+    ROSViewer* mpRosViewer;
 
     FrameDrawer* mpFrameDrawer;
     MapDrawer* mpMapDrawer;
@@ -235,6 +238,7 @@ private:
     std::thread* mptLocalMapping;
     std::thread* mptLoopClosing;
     std::thread* mptViewer;
+    std::thread* mptRosViewer;
 
     // Reset flag
     std::mutex mMutexReset;
