@@ -262,7 +262,7 @@ private:
     //
     string mStrLoadAtlasFromFile;
     string mStrSaveAtlasToFile;
-
+    string mStrTimeStatsPath;
     string mStrVocabularyFilePath;
 
     Settings* settings_;

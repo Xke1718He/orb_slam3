@@ -85,7 +85,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     }
     else{
         settings_ = nullptr;
-        cv::FileNode node = fsSettings["System.LoadAtlasFromFile"];
+        node = fsSettings["System.LoadAtlasFromFile"];
         if(!node.empty() && node.isString())
         {
             mStrLoadAtlasFromFile = (string)node;
@@ -97,6 +97,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
             mStrSaveAtlasToFile = (string)node;
         }
     }
+
+    node = fsSettings["System.TimeStatsPath"];
+    mStrTimeStatsPath = (string)node;
 
     node = fsSettings["loopClosing"];
     bool activeLC = true;
@@ -560,7 +563,7 @@ void System::Shutdown()
         pangolin::BindToContext("ORB-SLAM2: Map Viewer");*/
 
 #ifdef REGISTER_TIMES
-    mpTracker->PrintTimeStats();
+    mpTracker->PrintTimeStats(mStrTimeStatsPath);
 #endif
 
 

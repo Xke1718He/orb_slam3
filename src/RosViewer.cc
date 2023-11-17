@@ -13,6 +13,21 @@
 namespace ORB_SLAM3
 {
 
+const Eigen::Vector3d ROSViewer::imlt = Eigen::Vector3d(-1.0, -0.5, 1.0);
+const Eigen::Vector3d ROSViewer::imrt = Eigen::Vector3d( 1.0, -0.5, 1.0);
+const Eigen::Vector3d ROSViewer::imlb = Eigen::Vector3d(-1.0,  0.5, 1.0);
+const Eigen::Vector3d ROSViewer::imrb = Eigen::Vector3d( 1.0,  0.5, 1.0);
+const Eigen::Vector3d ROSViewer::lt0 = Eigen::Vector3d(-0.7, -0.5, 1.0);
+const Eigen::Vector3d ROSViewer::lt1 = Eigen::Vector3d(-0.7, -0.2, 1.0);
+const Eigen::Vector3d ROSViewer::lt2 = Eigen::Vector3d(-1.0, -0.2, 1.0);
+const Eigen::Vector3d ROSViewer::oc = Eigen::Vector3d(0.0, 0.0, 0.0);
+
+void Eigen2Point(const Eigen::Vector3d& v, geometry_msgs::Point& p) {
+  p.x = v.x();
+  p.y = v.y();
+  p.z = v.z();
+}
+
 ROSViewer::ROSViewer(System* pSystem, Tracking* pTracker, Atlas* pAtlas, FrameDrawer *pFrameDrawer):
    mpSystem(pSystem), mpFrameDrawer(pFrameDrawer), mpTracker(pTracker), mpAtlas(pAtlas),
    mBoth(false), mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
@@ -23,12 +38,21 @@ ROSViewer::ROSViewer(System* pSystem, Tracking* pTracker, Atlas* pAtlas, FrameDr
     mAllPointCloudPub = nh.advertise<sensor_msgs::PointCloud2>(prefix + "/point_cloud_all",1);
     mRefPointCloudPub = nh.advertise<sensor_msgs::PointCloud2>(prefix + "/point_cloud_ref",1);
     mKeyFramePub = nh.advertise<visualization_msgs::MarkerArray>(prefix + "/keyframes", 1);
+    mCameraPub = nh.advertise<visualization_msgs::MarkerArray>(prefix + "/camera_pose_visual", 1000);
 
     
     image_transport::ImageTransport it_(nh);
     mDrawFramePub = it_.advertise(prefix + "/frame", 1);
 
     mTbc = mpTracker->GetTbc();
+
+
+    Eigen::Matrix4f T_WC;
+    T_WC << 1, 0, 0, 0,
+        0, 0, 1, 0,
+        0, -1, 0, 0,
+        0, 0, 0, 1;
+    mTWC = Sophus::SE3f(T_WC);
 }
 
 void ROSViewer::PubFrame()
@@ -56,23 +80,22 @@ void ROSViewer::Run()
     mbStopped = false;
     while(true)
     {
-      std_msgs::Header header;
-      header.frame_id = "world";
-      double time;
-      {
-          std::unique_lock<std::mutex> lock(mMutexCamera);
-          time = mTimeStamp;
-      }
-      header.stamp = ros::Time(time);
+       std_msgs::Header header;
+       header.frame_id = "world";
+       double time;
+       {
+         std::unique_lock<std::mutex> lock(mMutexCamera);
+         time = mTimeStamp;
+       }
+       header.stamp = ros::Time(time);
 
-      PubFrame();
-      PubCameraPoseAndTF(header);
-      PubCameraPath(header);
-      PubPointCloud(header);
-
-      if(CheckFinish())
-          break;
-      usleep(1000);
+       PubFrame();
+       PubCameraPoseAndTF(header);
+       PubCameraPath(header);
+       PubPointCloud(header);
+       if(CheckFinish())
+         break;
+       usleep(1000);
     }
 
     SetFinish();
@@ -150,9 +173,9 @@ void ROSViewer::PubCameraPoseAndTF(std_msgs::Header& header)
     Sophus::SE3f Twc;
     Sophus::SE3f Twb;
     {
-        unique_lock<mutex> lock(mMutexCamera);
-        Twb = mCameraPose.inverse();
-        Twc = Twb * mTbc;
+      unique_lock<mutex> lock(mMutexCamera);
+      Twb = mCameraPose.inverse();
+      Twc = mpAtlas->isImuInitialized() ? Twb * mTbc : mTWC * Twb;
     }
     geometry_msgs::PoseStamped camPose;
     camPose.header = header;
@@ -167,8 +190,13 @@ void ROSViewer::PubCameraPoseAndTF(std_msgs::Header& header)
     camPose.pose.orientation.z = Twc.unit_quaternion().coeffs().z();
     mCamPosePub.publish(camPose);
 
-    publish_ros_tf_transform(Twb, "world", "body", header.stamp);
-    publish_ros_tf_transform(mTbc, "body", "camera", header.stamp);
+    PubCamera(Twc.translation().cast<double>(), Twc.unit_quaternion().cast<double>(), header);
+
+    if (mpAtlas->isImuInitialized())
+    {
+      publish_ros_tf_transform(Twb, "world", "body", header.stamp);
+      publish_ros_tf_transform(mTbc, "body", "camera", header.stamp);
+    }
 }
 
 void ROSViewer::PubCameraPath(std_msgs::Header& header)
@@ -201,7 +229,7 @@ void ROSViewer::PubCameraPath(std_msgs::Header& header)
 
     for (auto pKF : vpKFs)
     {
-        const auto pose = pKF->GetPoseInverse();
+        const auto pose = mpAtlas->isImuInitialized() ? pKF->GetPoseInverse() : mTWC * pKF->GetPoseInverse();
         const auto time = pKF->mTimeStamp;
         geometry_msgs::PoseStamped camPose;
         camPose.header.frame_id = "world";
@@ -289,7 +317,7 @@ void ROSViewer::PubPointCloud(std_msgs::Header& header)
     {
       if(vpMP->isBad() || spRefMPs.count(vpMP))
           continue;
-      Eigen::Vector3f pos = vpMP->GetWorldPos();
+      Eigen::Vector3f pos = mpAtlas->isImuInitialized() ? vpMP->GetWorldPos() : mTWC * vpMP->GetWorldPos();
       pcl::PointXYZRGBA p1;
       p1.x = pos(0);
       p1.y = pos(1);
@@ -309,7 +337,7 @@ void ROSViewer::PubPointCloud(std_msgs::Header& header)
     {
       if(spRefMP->isBad())
           continue;
-      auto pos = spRefMP->GetWorldPos();
+      auto pos = mpAtlas->isImuInitialized() ? spRefMP->GetWorldPos() : mTWC * spRefMP->GetWorldPos();
       pcl::PointXYZRGBA p2;
       p2.x = pos(0);
       p2.y = pos(1);
@@ -357,6 +385,102 @@ void ROSViewer::SetLoopFrame(KeyFrame *pCurrentFrame, KeyFrame *pLoopMatchedKF)
 {
     std::unique_lock<std::mutex> lock(mMutexLoop);
     mLoopKeyFrames.emplace_back(pCurrentFrame, pLoopMatchedKF);
+}
+void ROSViewer::PubCamera(const Eigen::Vector3d& p, const Eigen::Quaterniond& q, std_msgs::Header& header)
+{
+    const double m_scale = 0.5;
+    std_msgs::ColorRGBA m_image_boundary_color;
+    m_image_boundary_color.r = 1;
+    m_image_boundary_color.g = 0;
+    m_image_boundary_color.b = 0;
+    m_image_boundary_color.a = 1;
+
+    visualization_msgs::Marker marker;
+
+    marker.header = header;
+    marker.ns = "camera";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.scale.x = 0.01;
+
+    marker.pose.position.x = 0.0;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+
+
+    geometry_msgs::Point pt_lt, pt_lb, pt_rt, pt_rb, pt_oc, pt_lt0, pt_lt1, pt_lt2;
+
+    Eigen2Point(q * (m_scale *imlt) + p, pt_lt);
+    Eigen2Point(q * (m_scale *imlb) + p, pt_lb);
+    Eigen2Point(q * (m_scale *imrt) + p, pt_rt);
+    Eigen2Point(q * (m_scale *imrb) + p, pt_rb);
+    Eigen2Point(q * (m_scale *lt0 ) + p, pt_lt0);
+    Eigen2Point(q * (m_scale *lt1 ) + p, pt_lt1);
+    Eigen2Point(q * (m_scale *lt2 ) + p, pt_lt2);
+    Eigen2Point(q * (m_scale *oc  ) + p, pt_oc);
+
+    // image boundaries
+    marker.points.push_back(pt_lt);
+    marker.points.push_back(pt_lb);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_lb);
+    marker.points.push_back(pt_rb);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_rb);
+    marker.points.push_back(pt_rt);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_rt);
+    marker.points.push_back(pt_lt);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    // top-left indicator
+    marker.points.push_back(pt_lt0);
+    marker.points.push_back(pt_lt1);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_lt1);
+    marker.points.push_back(pt_lt2);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    // optical center connector
+    marker.points.push_back(pt_lt);
+    marker.points.push_back(pt_oc);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+
+    marker.points.push_back(pt_lb);
+    marker.points.push_back(pt_oc);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_rt);
+    marker.points.push_back(pt_oc);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    marker.points.push_back(pt_rb);
+    marker.points.push_back(pt_oc);
+    marker.colors.push_back(m_image_boundary_color);
+    marker.colors.push_back(m_image_boundary_color);
+
+    visualization_msgs::MarkerArray markerArray_msg;
+    markerArray_msg.markers.push_back(marker);
+    mCameraPub.publish(markerArray_msg);
 }
 }
 

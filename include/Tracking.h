@@ -184,8 +184,9 @@ public:
 #ifdef REGISTER_TIMES
     void LocalMapStats2File();
     void TrackStats2File();
-    void PrintTimeStats();
+    void PrintTimeStats(std::string timeStatsPath);
 
+    std::string mStrTimeStatsPath;
     vector<double> vdRectStereo_ms;
     vector<double> vdResizeImage_ms;
     vector<double> vdORBExtract_ms;
