@@ -22,7 +22,8 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h> 
 #include <pcl_ros/transforms.h>
-#include <pcl/point_cloud.h>  
+#include <pcl/point_cloud.h>
+#include <nav_msgs/Odometry.h>
 
 
 #include <mutex>
@@ -86,6 +87,7 @@ private:
     ros::Publisher mRefPointCloudPub;
     ros::Publisher mKeyFramePub;
     ros::Publisher mCameraPub;
+    ros::Publisher mOdomPub;
     
     image_transport::Publisher mDrawFramePub;
     tf::TransformBroadcaster mBroadcaster;

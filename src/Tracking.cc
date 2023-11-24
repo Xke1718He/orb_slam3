@@ -2413,13 +2413,13 @@ void Tracking::StereoInitialization()
         {
             if (!mCurrentFrame.mpImuPreintegrated || !mLastFrame.mpImuPreintegrated)
             {
-                cout << "not IMU meas" << endl;
+                LOG(INFO) << "not IMU meas";
                 return;
             }
 
             if (!mFastInit && (mCurrentFrame.mpImuPreintegratedFrame->avgA-mLastFrame.mpImuPreintegratedFrame->avgA).norm()<0.5)
             {
-                cout << "not enough acceleration" << endl;
+                LOG(INFO) << "not enough acceleration";
                 return;
             }
 
@@ -2453,7 +2453,7 @@ void Tracking::StereoInitialization()
             for(int i=0; i<mCurrentFrame.N;i++)
             {
                 float z = mCurrentFrame.mvDepth[i];
-                if(z>0)
+                if(z>0 && z < 20.0)
                 {
                     Eigen::Vector3f x3D;
                     mCurrentFrame.UnprojectStereo(i, x3D);

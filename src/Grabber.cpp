@@ -78,6 +78,14 @@ void ImageGrabber::SyncWithImu()
           imgLeftBuf.pop();
           this->mBufMutex.unlock();
         }
+
+        //tum
+        if (imLeft.type() == 2)
+        {
+          imLeft /= 257;
+          imLeft.convertTo(imLeft, CV_8UC1);
+        }
+
         mpSLAM->TrackMonocular(imLeft,tIm);
         break;
       case ORB_SLAM3::System::IMU_MONOCULAR:
@@ -133,6 +141,17 @@ void ImageGrabber::SyncWithImu()
           imgRightBuf.pop();
           this->mBufMutex.unlock();
         }
+
+        //tum
+        if (imLeft.type() == 2)
+        {
+          imLeft /= 257;
+          imLeft.convertTo(imLeft, CV_8UC1);
+
+          imRight /= 257;
+          imRight.convertTo(imRight, CV_8UC1);
+        }
+
         mpSLAM->TrackStereo(imLeft, imRight, tIm);
         break;
       case ORB_SLAM3::System::IMU_STEREO:
@@ -246,6 +265,12 @@ void ImageGrabber::RunMonoInertial()
 
   if(mbClahe)
     mClahe->apply(im,im);
+  //tum
+  if (im.type() == 2)
+  {
+    im /= 257;
+    im.convertTo(im, CV_8UC1);
+  }
   mpSLAM->TrackMonocular(im,tIm,vImuMeas);
 }
 
@@ -260,6 +285,16 @@ void ImageGrabber::RunStereoInertial()
   imRight = GetImage(imgRightBuf.front());
   imgRightBuf.pop();
   this->mBufMutex.unlock();
+
+  //tum
+  if (imLeft.type() == 2)
+  {
+    imLeft /= 257;
+    imLeft.convertTo(imLeft, CV_8UC1);
+
+    imRight /= 257;
+    imRight.convertTo(imRight, CV_8UC1);
+  }
 
   vector<ORB_SLAM3::IMU::Point> vImuMeas = GetIMUData(tIm);
   if(mbClahe)
@@ -296,7 +331,7 @@ void ImageGrabber::RunRGBDInertial()
 vector<ORB_SLAM3::IMU::Point> ImageGrabber::GetIMUData(double imTime)
 {
   vector<ORB_SLAM3::IMU::Point> vImuMeas;
-  mBufMutex.lock();
+  mBufMutexIMU.lock();
   if (!imuBuf.empty())
   {
     // Load imu measurements from buffer
@@ -309,7 +344,7 @@ vector<ORB_SLAM3::IMU::Point> ImageGrabber::GetIMUData(double imTime)
       imuBuf.pop();
     }
   }
-  mBufMutex.unlock();
+  mBufMutexIMU.unlock();
   return vImuMeas;
 }
 void ImageGrabber::RectifyImage()

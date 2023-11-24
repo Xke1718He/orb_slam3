@@ -39,6 +39,7 @@ ROSViewer::ROSViewer(System* pSystem, Tracking* pTracker, Atlas* pAtlas, FrameDr
     mRefPointCloudPub = nh.advertise<sensor_msgs::PointCloud2>(prefix + "/point_cloud_ref",1);
     mKeyFramePub = nh.advertise<visualization_msgs::MarkerArray>(prefix + "/keyframes", 1);
     mCameraPub = nh.advertise<visualization_msgs::MarkerArray>(prefix + "/camera_pose_visual", 1000);
+    mOdomPub = nh.advertise<nav_msgs::Odometry>("odometry", 1000);
 
     
     image_transport::ImageTransport it_(nh);
@@ -174,8 +175,8 @@ void ROSViewer::PubCameraPoseAndTF(std_msgs::Header& header)
     Sophus::SE3f Twb;
     {
       unique_lock<mutex> lock(mMutexCamera);
-      Twb = mCameraPose.inverse();
-      Twc = mpAtlas->isImuInitialized() ? Twb * mTbc : mTWC * Twb;
+      Twc = mpAtlas->isImuInitialized() ? mCameraPose.inverse() : mTWC * mCameraPose.inverse();
+      Twb = Twc * mTbc.inverse();
     }
     geometry_msgs::PoseStamped camPose;
     camPose.header = header;
@@ -192,10 +193,23 @@ void ROSViewer::PubCameraPoseAndTF(std_msgs::Header& header)
 
     PubCamera(Twc.translation().cast<double>(), Twc.unit_quaternion().cast<double>(), header);
 
-    if (mpAtlas->isImuInitialized())
+//    if (mpAtlas->isImuInitialized())
     {
       publish_ros_tf_transform(Twb, "world", "body", header.stamp);
       publish_ros_tf_transform(mTbc, "body", "camera", header.stamp);
+
+      nav_msgs::Odometry odometry;
+      odometry.header = header;
+      odometry.header.frame_id = "world";
+      odometry.child_frame_id = "world";
+      odometry.pose.pose.position.x = Twb.translation().x();
+      odometry.pose.pose.position.y = Twb.translation().y();
+      odometry.pose.pose.position.z = Twb.translation().z();
+      odometry.pose.pose.orientation.x = Twb.unit_quaternion().coeffs().x();
+      odometry.pose.pose.orientation.y = Twb.unit_quaternion().coeffs().y();
+      odometry.pose.pose.orientation.z = Twb.unit_quaternion().coeffs().z();
+      odometry.pose.pose.orientation.w = Twb.unit_quaternion().coeffs().w();
+      mOdomPub.publish(odometry);
     }
 }
 
@@ -273,8 +287,8 @@ void ROSViewer::PubCameraPath(std_msgs::Header& header)
     //show loop info
     for (auto& loopKeyFrame : loopKeyFrames)
     {
-       Sophus::SE3f curPose = loopKeyFrame.first->GetPoseInverse();
-       Sophus::SE3f matchPose = loopKeyFrame.second->GetPoseInverse();
+       Sophus::SE3f curPose = mpAtlas->isImuInitialized() ? loopKeyFrame.first->GetPoseInverse(): mTWC * loopKeyFrame.first->GetPoseInverse();
+       Sophus::SE3f matchPose = mpAtlas->isImuInitialized() ? loopKeyFrame.second->GetPoseInverse() : mTWC * loopKeyFrame.second->GetPoseInverse();
 
        geometry_msgs::Point p;
        p.x = curPose.translation().x();
@@ -287,7 +301,10 @@ void ROSViewer::PubCameraPath(std_msgs::Header& header)
        markerEdge.points.push_back(p);
     }
 
-    markerArray.markers.push_back(markerEdge);
+    if (!loopKeyFrames.empty())
+    {
+       markerArray.markers.push_back(markerEdge);
+    }
     markerArray.markers.push_back(keyPoses);
 
     if (camPath.poses.empty())
