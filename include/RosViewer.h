@@ -22,7 +22,8 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h> 
 #include <pcl_ros/transforms.h>
-#include <pcl/point_cloud.h>  
+#include <pcl/point_cloud.h>
+#include <nav_msgs/Odometry.h>
 
 
 #include <mutex>
@@ -77,12 +78,16 @@ private:
     std::mutex mMutexCamera;
     Sophus::SE3f mCameraPose;
     Sophus::SE3f mTbc;
+    // W: right->front->up C: right->down->front
+    Sophus::SE3f mTWC;
 
     ros::Publisher mCamPosePub;
     ros::Publisher mCamPathPub;
     ros::Publisher mAllPointCloudPub;
     ros::Publisher mRefPointCloudPub;
     ros::Publisher mKeyFramePub;
+    ros::Publisher mCameraPub;
+    ros::Publisher mOdomPub;
     
     image_transport::Publisher mDrawFramePub;
     tf::TransformBroadcaster mBroadcaster;
@@ -92,10 +97,19 @@ private:
     void PubCameraPath(std_msgs::Header& header);
     void PubPointCloud(std_msgs::Header& header);
     void PubFrame();
-    void PubKeyFrame(std_msgs::Header& header);
+    void PubCamera(const Eigen::Vector3d& p, const Eigen::Quaterniond& q, std_msgs::Header& header);
 
     void publish_ros_tf_transform(const Sophus::SE3f& Twc_SE3f, const string& frame_id, const string& child_frame_id, ros::Time msg_time);
     static tf::Transform SE3f_to_tfTransform(Sophus::SE3f T_SE3f);
+
+    static const Eigen::Vector3d imlt;
+    static const Eigen::Vector3d imlb;
+    static const Eigen::Vector3d imrt;
+    static const Eigen::Vector3d imrb;
+    static const Eigen::Vector3d oc  ;
+    static const Eigen::Vector3d lt0 ;
+    static const Eigen::Vector3d lt1 ;
+    static const Eigen::Vector3d lt2 ;
 };
 
 }

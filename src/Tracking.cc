@@ -33,6 +33,7 @@
 
 #include <mutex>
 #include <chrono>
+#include <utility>
 
 
 using namespace std;
@@ -183,8 +184,9 @@ double calcDeviation(vector<int> v_values, double average)
 
 void Tracking::LocalMapStats2File()
 {
+    std::string filePath = mStrTimeStatsPath + "/LocalMapTimeStats.txt";
     ofstream f;
-    f.open("LocalMapTimeStats.txt");
+    f.open(filePath);
     f << fixed << setprecision(6);
     for(int i=0; i<mpLocalMapper->vdLMTotal_ms.size(); ++i)
     {
@@ -255,7 +257,8 @@ void Tracking::TrackStats2File()
 
     // f.close();
 
-    f.open("TrackingTimeStats.txt");
+    std::string filePath = mStrTimeStatsPath + "/TrackingTimeStats.txt";
+    f.open(filePath);
     f << fixed << setprecision(6);
 
     // f << "#Image Rect[ms], Image Resize[ms], ORB ext[ms], Stereo match[ms], IMU preint[ms], Pose pred[ms], LM track[ms], KF dec[ms], Total[ms]" << endl;
@@ -321,15 +324,17 @@ void Tracking::TrackStats2File()
     f.close();
 }
 
-void Tracking::PrintTimeStats()
+void Tracking::PrintTimeStats(std::string timeStatsPath)
 {
+    mStrTimeStatsPath = std::move(timeStatsPath);
     // Save data in files
     TrackStats2File();
     LocalMapStats2File();
 
 
+    std::string filePath = mStrTimeStatsPath + "/ExecMean.txt";
     ofstream f;
-    f.open("ExecMean.txt");
+    f.open(filePath);
     f << fixed;
     //Report the mean and std of each one
     std::cout << std::endl << " TIME STATS in ms (mean$\\pm$std)" << std::endl;
@@ -2408,13 +2413,13 @@ void Tracking::StereoInitialization()
         {
             if (!mCurrentFrame.mpImuPreintegrated || !mLastFrame.mpImuPreintegrated)
             {
-                cout << "not IMU meas" << endl;
+                LOG(INFO) << "not IMU meas";
                 return;
             }
 
             if (!mFastInit && (mCurrentFrame.mpImuPreintegratedFrame->avgA-mLastFrame.mpImuPreintegratedFrame->avgA).norm()<0.5)
             {
-                cout << "not enough acceleration" << endl;
+                LOG(INFO) << "not enough acceleration";
                 return;
             }
 
@@ -2448,7 +2453,7 @@ void Tracking::StereoInitialization()
             for(int i=0; i<mCurrentFrame.N;i++)
             {
                 float z = mCurrentFrame.mvDepth[i];
-                if(z>0)
+                if(z>0 && z < 20.0)
                 {
                     Eigen::Vector3f x3D;
                     mCurrentFrame.UnprojectStereo(i, x3D);
@@ -3096,7 +3101,7 @@ bool Tracking::TrackLocalMap()
     // Decide if the tracking was succesful
     // More restrictive if there was a relocalization recently
     mpLocalMapper->mnMatchesInliers=mnMatchesInliers;
-    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && mnMatchesInliers<50)
+    if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && mnMatchesInliers<20)
         return false;
 
     if((mnMatchesInliers>10)&&(mState==RECENTLY_LOST))
@@ -4157,7 +4162,21 @@ void Tracking::SetROSViewer(ROSViewer *pViewer)
 }
 Sophus::SE3f Tracking::GetTbc()
 {
-    return mpImuCalib->mTbc;
+    Eigen::Vector3f p;
+    p.setZero();
+
+    Eigen::Matrix3f R;
+    R.setIdentity();
+
+    Sophus::SE3f Tbc(R, p);
+    if (mpImuCalib)
+    {
+        return mpImuCalib->mTbc;
+    }
+    else
+    {
+        return Tbc;
+    }
 }
 
 #ifdef REGISTER_LOOP

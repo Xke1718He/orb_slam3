@@ -113,22 +113,23 @@ src/TwoViewReconstruction.cc
 src/Config.cc
 src/Settings.cc
 src/RosViewer.cc
+src/Grabber.cpp
 )
 
-# Mono
-add_executable(Mono_Inertial src/app/ros_mono_inertial.cc ${SRC_FILES}
+# App
+add_executable(ORB_SLAM3 src/app/ros_app.cpp ${SRC_FILES}
 )
-target_link_libraries(Mono_Inertial
-${catkin_LIBRARIES}
-${OpenCV_LIBS}
-${EIGEN3_LIBS}
-${Pangolin_LIBRARIES}
-${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
-${PCL_LIBRARIES}
-${GLOG_LIBRARY}
--lboost_serialization
--lcrypto
+target_link_libraries(ORB_SLAM3
+        ${catkin_LIBRARIES}
+        ${OpenCV_LIBS}
+        ${EIGEN3_LIBS}
+        ${Pangolin_LIBRARIES}
+        ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+        ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+        ${PCL_LIBRARIES}
+        ${GLOG_LIBRARY}
+        -lboost_serialization
+        -lcrypto
 )
 
 
