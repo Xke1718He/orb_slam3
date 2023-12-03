@@ -58,6 +58,7 @@ if(NOT OpenCV_FOUND)
       message(FATAL_ERROR "OpenCV > 3.0 not found.")
    endif()
 endif()
+find_package(Ceres REQUIRED)
 
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
@@ -114,6 +115,7 @@ src/Config.cc
 src/Settings.cc
 src/RosViewer.cc
 src/Grabber.cpp
+src/CeresOptimizer.cpp
 )
 
 # App
@@ -128,6 +130,7 @@ target_link_libraries(ORB_SLAM3
         ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
         ${PCL_LIBRARIES}
         ${GLOG_LIBRARY}
+        ${CERES_LIBRARIES}
         -lboost_serialization
         -lcrypto
 )
