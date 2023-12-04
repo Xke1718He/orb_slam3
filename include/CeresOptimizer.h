@@ -7,8 +7,10 @@
 #include <ceres/ceres.h>
 #include <glog/logging.h>
 #include <sophus/se3.hpp>
+#include <utility>
 #include <include/CameraModels/GeometricCamera.h>
 #include "Frame.h"
+#include "MapPoint.h"
 namespace ORB_SLAM3
 {
 class PoseLocalParameterization : public  ceres::LocalParameterization
@@ -19,7 +21,7 @@ class PoseLocalParameterization : public  ceres::LocalParameterization
   virtual int LocalSize() const { return 6; };
 };
 
-class PoseOnly : ceres::SizedCostFunction<2, 6>
+class PoseOnly : public ceres::SizedCostFunction<2, 6>
 {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -34,7 +36,24 @@ private:
 
 class CeresOptimizer{
 public:
-  int static PoseOptimization(Frame* pFrame);
+  struct ResidualBlock{
+      ResidualBlock(std::shared_ptr<ceres::CostFunction> _cost_function,
+                    std::shared_ptr<ceres::LossFunction> _loss_function,
+                    const std::vector<double*>& _parameter_blocks)
+                    : cost_function(std::move(_cost_function)), loss_function(std::move(_loss_function)),
+                    parameter_blocks(_parameter_blocks) {}
+
+      std::shared_ptr<ceres::CostFunction> cost_function;
+      std::shared_ptr<ceres::LossFunction> loss_function;
+      std::vector<double*> parameter_blocks;
+  };
+
+  int PoseOptimization(Frame* pFrame);
+  void SetFramePoses(const std::vector<Frame>& vFrame);
+  double* GetFramePose(int frameId);
+private:
+  std::unordered_map<int, int> frameIdToParamId;
+  Eigen::Matrix<double, 6, Eigen::Dynamic> framePoses;
 };
 
 template<typename T>
