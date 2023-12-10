@@ -27,11 +27,13 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   PoseOnly(Eigen::Vector3d &p3d, Eigen::Vector2d &pixel, double information, ORB_SLAM3::GeometricCamera* pCamera);
   bool Evaluate(double const* const* parameter, double* residuals, double** jacobians) const override;
+  double chi2(){return mchi2};
 private:
   Eigen::Vector3d mXw;
   Eigen::Vector2d mObs;
   ORB_SLAM3::GeometricCamera* mpCamera;
   Eigen::Matrix2d mInformation;
+  double mchi2;
 };
 
 class CeresOptimizer{
@@ -41,19 +43,25 @@ public:
                     std::shared_ptr<ceres::LossFunction> _loss_function,
                     const std::vector<double*>& _parameter_blocks)
                     : cost_function(std::move(_cost_function)), loss_function(std::move(_loss_function)),
-                    parameter_blocks(_parameter_blocks) {}
+                    parameter_blocks(_parameter_blocks), active(true){}
 
       std::shared_ptr<ceres::CostFunction> cost_function;
       std::shared_ptr<ceres::LossFunction> loss_function;
       std::vector<double*> parameter_blocks;
+      bool active;
   };
 
   int PoseOptimization(Frame* pFrame);
-  void SetFramePoses(const std::vector<Frame>& vFrame);
+  void SetFramePoses(const std::vector<Frame*>& vpFrame);
   double* GetFramePose(int frameId);
+
+  void AddResidualBlock(const ResidualBlock& residualInfo);
+  std::vector<ResidualBlock> GetAllResidualBlock();
 private:
   std::unordered_map<int, int> frameIdToParamId;
   Eigen::Matrix<double, 6, Eigen::Dynamic> framePoses;
+
+  std::vector<ResidualBlock> vresidualInfo;
 };
 
 template<typename T>

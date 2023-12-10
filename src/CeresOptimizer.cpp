@@ -33,7 +33,9 @@ bool PoseOnly::Evaluate(const double *const *parameter, double *residuals, doubl
   Xc << pCam[0], pCam[1], pCam[2];
 
   Eigen::Map<Eigen::Vector2d> err(residuals);
-  err = mInformation * mObs - mpCamera->project(Xc);
+  err = mInformation * ( mObs - mpCamera->project(Xc));
+
+  mchi2 = err.dot(mInformation * err);
 
   if (!jacobians)
     return true;
@@ -57,18 +59,24 @@ bool PoseOnly::Evaluate(const double *const *parameter, double *residuals, doubl
   return true;
 }
 
+void CeresOptimizer::AddResidualBlock(const ResidualBlock& residualInfo)
+{
+  vresidualInfo.push_back(residualInfo);
+}
+
 int CeresOptimizer::PoseOptimization(Frame *pFrame)
 {
-  ceres::Problem problem;
   const int N = pFrame->N;
   const float deltaMono = std::sqrt(5.991f);
   const float deltaStereo = std::sqrt(7.815f);
 
   int nInitialCorrespondences = 0;
 
-  auto* pose_ptr = new double[3];
-  Eigen::Map<Eigen::Matrix<double, 6, 1>> pose(pose_ptr);
-  pose = pFrame->GetPose().log().cast<double>();
+  std::vector<Frame*> vFrame;
+  vFrame.push_back(pFrame);
+
+  SetFramePoses(vFrame);
+  double* pose = GetFramePose(pFrame->mnId);
 
 //  vector<ORB_SLAM3::EdgeSE3ProjectXYZOnlyPose*> vpEdgesMono;
 //  vector<ORB_SLAM3::EdgeSE3ProjectXYZOnlyPoseToBody*> vpEdgesMono_FHR;
@@ -107,24 +115,78 @@ int CeresOptimizer::PoseOptimization(Frame *pFrame)
             Eigen::Vector3d Xw = pMP->GetWorldPos().cast<double>();
             const float invSigma2 = pFrame->mvInvLevelSigma2[kpUn.octave];
             ceres::CostFunction* costFunction = new PoseOnly(Xw, obs, invSigma2, pFrame->mpCamera);
-            ceres::LossFunction* loss_function = new ceres::HuberLoss(deltaMono);
-            problem.AddResidualBlock(costFunction, loss_function, pose_ptr);
+            ceres::LossFunction* lossFunction = new ceres::HuberLoss(deltaMono);
+            ResidualBlock residualInfo(costFunction, lossFunction, {pose});
+            AddResidualBlock(residualInfo);
           }
         }
+      }
+    }
+  }
+
+  if(nInitialCorrespondences<3)
+      return 0;
+
+  // We perform 4 optimizations, after each optimization we classify observation as inlier/outlier
+  // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
+  const float chi2Mono[4]={5.991,5.991,5.991,5.991};
+  const float chi2Stereo[4]={7.815,7.815,7.815, 7.815};
+  const int its[4]={10,10,10,10};
+
+  int nBad=0;
+  for(size_t it=0; it<4; it++)
+  {
+    ceres::Problem problem;
+    ceres::LocalParameterization* poseLocalParameter = new PoseLocalParameterization();
+    std::vector<ResidualBlock> vResidualInfo = GetAllResidualBlock();
+    for (int i=0; i < vResidualInfo.size; i++)
+    {
+      if (!vresidualInfo[i].active)
+      {
+        continue;
+      }
+      auto parameterBlocks = vresidualInfo[i].parameter_blocks;
+      auto costFunction = vResidualInfo[i].cost_function;
+      auto& lossFunction = vresidualInfo[i].loss_function;
+
+      problem.AddResidualBlock(costFunction.get(), lossFunction.get(), parameterBlocks);
+    }
+
+    problem.SetParameterization(pose, poseLocalParameter);
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.max_num_iterations = 10;
+
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+
+    for (int i=0; i < vResidualInfo.size; i++)
+    {
+      if (!vresidualInfo[i].active)
+      {
+        continue;
+      }
+      auto costFunction = vResidualInfo[i].cost_function;
+      PoseOnly* costFunctionPose = std::static_cast<PoseOnly>(costFunction.get());
+      if (costFunctionPose->chi2() > chi2Mono[it])
+      {
+        // pFrame->mvbOutlier[idx]=true;
+        vresidualInfo[i].active = false;
+        nBad++;
       }
     }
   }
   return 0;
 }
 
-void CeresOptimizer::SetFramePoses(const std::vector<Frame> &vFrame)
+void CeresOptimizer::SetFramePoses(const std::vector<Frame*> &vpFrame)
 {
   frameIdToParamId.reserve(vFrame.size());
   framePoses.resize(Eigen::NoChange, vFrame.size());
   for (int i = 0; i < vFrame.size(); i++)
   {
-    framePoses.col(i) = vFrame[i].GetPose().log().cast<double>();
-    frameIdToParamId.insert({vFrame[i].mnId, i});
+    framePoses.col(i) = vFrame[i]->GetPose().log().cast<double>();
+    frameIdToParamId.insert({vFrame[i]->mnId, i});
   }
 }
 
