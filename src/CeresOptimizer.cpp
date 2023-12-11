@@ -35,7 +35,7 @@ bool PoseOnly::Evaluate(const double *const *parameter, double *residuals, doubl
   Eigen::Map<Eigen::Vector2d> err(residuals);
   err = mInformation * ( mObs - mpCamera->project(Xc));
 
-  mchi2 = err.dot(mInformation * err);
+  mChi2 = err.dot(mInformation * err);
 
   if (!jacobians)
     return true;
@@ -61,7 +61,7 @@ bool PoseOnly::Evaluate(const double *const *parameter, double *residuals, doubl
 
 void CeresOptimizer::AddResidualBlock(const ResidualBlock& residualInfo)
 {
-  vresidualInfo.push_back(residualInfo);
+  mvResidualInfo.push_back(residualInfo);
 }
 
 int CeresOptimizer::PoseOptimization(Frame *pFrame)
@@ -114,8 +114,9 @@ int CeresOptimizer::PoseOptimization(Frame *pFrame)
 
             Eigen::Vector3d Xw = pMP->GetWorldPos().cast<double>();
             const float invSigma2 = pFrame->mvInvLevelSigma2[kpUn.octave];
-            ceres::CostFunction* costFunction = new PoseOnly(Xw, obs, invSigma2, pFrame->mpCamera);
-            ceres::LossFunction* lossFunction = new ceres::HuberLoss(deltaMono);
+
+            std::shared_ptr<ceres::CostFunction> costFunction = std::make_shared<PoseOnly>(Xw, obs, invSigma2, pFrame->mpCamera);
+            std::shared_ptr<ceres::LossFunction> lossFunction = std::make_shared<ceres::HuberLoss>(deltaMono);
             ResidualBlock residualInfo(costFunction, lossFunction, {pose});
             AddResidualBlock(residualInfo);
           }
@@ -134,20 +135,20 @@ int CeresOptimizer::PoseOptimization(Frame *pFrame)
   const int its[4]={10,10,10,10};
 
   int nBad=0;
-  for(size_t it=0; it<4; it++)
+  for (size_t it=0; it<4; it++)
   {
     ceres::Problem problem;
     ceres::LocalParameterization* poseLocalParameter = new PoseLocalParameterization();
     std::vector<ResidualBlock> vResidualInfo = GetAllResidualBlock();
-    for (int i=0; i < vResidualInfo.size; i++)
+    for (int i=0; i < vResidualInfo.size(); i++)
     {
-      if (!vresidualInfo[i].active)
+      if (!mvResidualInfo[i].active)
       {
         continue;
       }
-      auto parameterBlocks = vresidualInfo[i].parameter_blocks;
+      auto parameterBlocks = mvResidualInfo[i].parameter_blocks;
       auto costFunction = vResidualInfo[i].cost_function;
-      auto& lossFunction = vresidualInfo[i].loss_function;
+      auto& lossFunction = mvResidualInfo[i].loss_function;
 
       problem.AddResidualBlock(costFunction.get(), lossFunction.get(), parameterBlocks);
     }
@@ -160,18 +161,18 @@ int CeresOptimizer::PoseOptimization(Frame *pFrame)
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 
-    for (int i=0; i < vResidualInfo.size; i++)
+    for (int i=0; i < vResidualInfo.size(); i++)
     {
-      if (!vresidualInfo[i].active)
+      if (!mvResidualInfo[i].active)
       {
         continue;
       }
       auto costFunction = vResidualInfo[i].cost_function;
-      PoseOnly* costFunctionPose = std::static_cast<PoseOnly>(costFunction.get());
+      auto* costFunctionPose = dynamic_cast<PoseOnly* >(costFunction.get());
       if (costFunctionPose->chi2() > chi2Mono[it])
       {
         // pFrame->mvbOutlier[idx]=true;
-        vresidualInfo[i].active = false;
+        mvResidualInfo[i].active = false;
         nBad++;
       }
     }
@@ -181,12 +182,12 @@ int CeresOptimizer::PoseOptimization(Frame *pFrame)
 
 void CeresOptimizer::SetFramePoses(const std::vector<Frame*> &vpFrame)
 {
-  frameIdToParamId.reserve(vFrame.size());
-  framePoses.resize(Eigen::NoChange, vFrame.size());
-  for (int i = 0; i < vFrame.size(); i++)
+  frameIdToParamId.reserve(vpFrame.size());
+  framePoses.resize(Eigen::NoChange, vpFrame.size());
+  for (int i = 0; i < vpFrame.size(); i++)
   {
-    framePoses.col(i) = vFrame[i]->GetPose().log().cast<double>();
-    frameIdToParamId.insert({vFrame[i]->mnId, i});
+    framePoses.col(i) = vpFrame[i]->GetPose().log().cast<double>();
+    frameIdToParamId.insert({vpFrame[i]->mnId, i});
   }
 }
 
@@ -201,5 +202,10 @@ double *CeresOptimizer::GetFramePose(int frameId)
   {
     return nullptr;
   }
+}
+
+vector<CeresOptimizer::ResidualBlock> CeresOptimizer::GetAllResidualBlock()
+{
+  return mvResidualInfo;
 }
 }

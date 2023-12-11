@@ -27,13 +27,15 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   PoseOnly(Eigen::Vector3d &p3d, Eigen::Vector2d &pixel, double information, ORB_SLAM3::GeometricCamera* pCamera);
   bool Evaluate(double const* const* parameter, double* residuals, double** jacobians) const override;
-  double chi2(){return mchi2};
+  double chi2() const {return mChi2;};
 private:
   Eigen::Vector3d mXw;
   Eigen::Vector2d mObs;
   ORB_SLAM3::GeometricCamera* mpCamera;
   Eigen::Matrix2d mInformation;
-  double mchi2;
+
+  // Mutable var. that will be updated in const Evaluate()
+  mutable double mChi2;
 };
 
 class CeresOptimizer{
@@ -61,7 +63,7 @@ private:
   std::unordered_map<int, int> frameIdToParamId;
   Eigen::Matrix<double, 6, Eigen::Dynamic> framePoses;
 
-  std::vector<ResidualBlock> vresidualInfo;
+  std::vector<ResidualBlock> mvResidualInfo;
 };
 
 template<typename T>
