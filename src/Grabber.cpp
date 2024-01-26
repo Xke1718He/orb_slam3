@@ -86,7 +86,27 @@ void ImageGrabber::SyncWithImu()
           imLeft.convertTo(imLeft, CV_8UC1);
         }
 
-        mpSLAM->TrackMonocular(imLeft,tIm);
+        {
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+          std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+          std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
+#endif
+          mpSLAM->TrackMonocular(imLeft, tIm);
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+          std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+          std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+
+          double t_track = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
+          mpSLAM->InsertTrackTime(t_track);
+#endif
+        }
+
         break;
       case ORB_SLAM3::System::IMU_MONOCULAR:
         if (!imgLeftBuf.empty() && !imuBuf.empty())
@@ -113,7 +133,28 @@ void ImageGrabber::SyncWithImu()
           imgDBuf.pop();
           this->mBufMutex.unlock();
         }
+
+        {
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+          std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+          std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
+#endif
         mpSLAM->TrackRGBD(imLeft, imDepth, tIm);
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+
+        double t_track = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
+        mpSLAM->InsertTrackTime(t_track);
+#endif
+        }
+
         break;
       case ORB_SLAM3::System::IMU_RGBD:
         if (!imgLeftBuf.empty() && !imuBuf.empty())
@@ -152,7 +193,27 @@ void ImageGrabber::SyncWithImu()
           imRight.convertTo(imRight, CV_8UC1);
         }
 
+        {
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+          std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+#else
+          std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+#endif
+#endif
         mpSLAM->TrackStereo(imLeft, imRight, tIm);
+#ifdef REGISTER_TIMES
+#ifdef COMPILEDWITHC11
+        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+#else
+        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+#endif
+
+        double t_track = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t2 - t1).count();
+        mpSLAM->InsertTrackTime(t_track);
+#endif
+        }
+
         break;
       case ORB_SLAM3::System::IMU_STEREO:
         if (!imgLeftBuf.empty() && !imuBuf.empty())
@@ -271,7 +332,23 @@ void ImageGrabber::RunMonoInertial()
     im /= 257;
     im.convertTo(im, CV_8UC1);
   }
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+  #endif
+#endif
   mpSLAM->TrackMonocular(im,tIm,vImuMeas);
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+  #endif
+    double t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
+    mpSLAM->InsertTrackTime(t_track);
+#endif
 }
 
 void ImageGrabber::RunStereoInertial()
@@ -308,8 +385,23 @@ void ImageGrabber::RunStereoInertial()
     cv::remap(imLeft,imLeft,M1l,M2l,cv::INTER_LINEAR);
     cv::remap(imRight,imRight,M1r,M2r,cv::INTER_LINEAR);
   }
-
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+  #endif
+#endif
   Sophus::SE3f Tcw = mpSLAM->TrackStereo(imLeft, imRight, tIm, vImuMeas);
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+  #endif
+    double t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
+    mpSLAM->InsertTrackTime(t_track);
+#endif
 }
 
 void ImageGrabber::RunRGBDInertial()
@@ -325,7 +417,23 @@ void ImageGrabber::RunRGBDInertial()
   this->mBufMutex.unlock();
 
   vector<ORB_SLAM3::IMU::Point> vImuMeas = GetIMUData(tIm);
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
+  #endif
+#endif
   Sophus::SE3f Tcw = mpSLAM->TrackRGBD(im, depth, tIm, vImuMeas);
+#ifdef REGISTER_TIMES
+  #ifdef COMPILEDWITHC11
+    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+  #else
+    std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
+  #endif
+    double t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
+    mpSLAM->InsertTrackTime(t_track);
+#endif
 }
 
 vector<ORB_SLAM3::IMU::Point> ImageGrabber::GetIMUData(double imTime)
